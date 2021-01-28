@@ -60,4 +60,7 @@ static int BPF_FUNC(sk_release, struct bpf_sock *sk);
 static int BPF_FUNC(sk_assign, struct __sk_buff *skb, struct bpf_sock *sk,
 		    __u64 flags);
 
+static int BPF_FUNC(skb_change_head, struct __sk_buff *skb, __u32 head_room,
+		    __u64 flags);
+
 #endif /* __BPF_HELPERS_SKB__ */

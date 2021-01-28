@@ -12,6 +12,7 @@
 #include <linux/in.h>
 #include <linux/socket.h>
 
+#include "eth.h"
 #include "endian.h"
 #include "mono.h"
 #include "config.h"
@@ -107,6 +108,17 @@ static __always_inline bool validate_ethertype(struct __ctx_buff *ctx,
 	void *data_end = ctx_data_end(ctx);
 	struct ethhdr *eth = data;
 
+#if __ctx_is == __ctx_skb
+	/* XDP does not support packets without L2 hdr. */
+	if (ETH_HLEN == 0) {
+		/* The packet is received on L2-less device. Determine L3
+		 * protocol from skb->protocol.
+		 */
+		*proto = ctx_get_protocol(ctx);
+		return true;
+	}
+#endif
+
 	if (data + ETH_HLEN > data_end)
 		return false;
 	*proto = eth->h_proto;
@@ -116,10 +128,12 @@ static __always_inline bool validate_ethertype(struct __ctx_buff *ctx,
 }
 
 static __always_inline __maybe_unused bool
-__revalidate_data_pull(struct __ctx_buff *ctx, void **data_, void **data_end_,
-		       void **l3, const __u32 l3_len, const bool pull)
+__revalidate_data_pull_with_eth_hlen(struct __ctx_buff *ctx, void **data_,
+				     void **data_end_, void **l3,
+				     const __u32 l3_len, const bool pull,
+				     __u32 eth_hlen)
 {
-	const __u32 tot_len = ETH_HLEN + l3_len;
+	const __u32 tot_len = eth_hlen + l3_len;
 	void *data_end;
 	void *data;
 
@@ -135,8 +149,16 @@ __revalidate_data_pull(struct __ctx_buff *ctx, void **data_, void **data_end_,
 	*data_ = data;
 	*data_end_ = data_end;
 
-	*l3 = data + ETH_HLEN;
+	*l3 = data + eth_hlen;
 	return true;
+}
+
+static __always_inline __maybe_unused bool
+__revalidate_data_pull(struct __ctx_buff *ctx, void **data, void **data_end,
+		       void **l3, const __u32 l3_len, const bool pull)
+{
+	return __revalidate_data_pull_with_eth_hlen(ctx, data, data_end, l3,
+						    l3_len, pull, ETH_HLEN);
 }
 
 /* revalidate_data_pull() initializes the provided pointers from the ctx and
@@ -162,6 +184,10 @@ __revalidate_data_pull(struct __ctx_buff *ctx, void **data_, void **data_end_,
  */
 #define revalidate_data(ctx, data, data_end, ip)			\
 	__revalidate_data_pull(ctx, data, data_end, (void **)ip, sizeof(**ip), false)
+
+#define revalidate_data_with_eth_hlen(ctx, data, data_end, ip, eth_len)		\
+	__revalidate_data_pull_with_eth_hlen(ctx, data, data_end, (void **)ip,	\
+					     sizeof(**ip), false, eth_len)
 
 /* Macros for working with L3 cilium defined IPV6 addresses */
 #define BPF_V6(dst, ...)	BPF_V6_1(dst, fetch_ipv6(__VA_ARGS__))

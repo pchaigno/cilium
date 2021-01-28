@@ -1367,6 +1367,13 @@ int tail_nodeport_nat_ipv4(struct __ctx_buff *ctx)
 		goto drop_err;
 	}
 
+	if (ETH_HLEN == 0 && DIRECT_ROUTING_DEV_IFINDEX == NATIVE_DEV_IFINDEX)
+		/* NodePort request came to wg iface and it's going to be
+		 * forwarded over wg. The request doesn't have L2 hdr, so skip
+		 * L2 addr settings.
+		 */
+		goto out_send;
+
 	if (nodeport_lb_hairpin())
 		dmac = map_lookup_elem(&NODEPORT_NEIGH4, &ip4->daddr);
 	if (dmac) {
@@ -1647,6 +1654,23 @@ static __always_inline int rev_nodeport_lb4(struct __ctx_buff *ctx, int *ifindex
 				return CTX_ACT_OK;
 			}
 		}
+#endif
+
+#if (__ctx_is == __ctx_skb)
+	if (ETH_HLEN == 0) {
+		/* Create L2 hdr for reply packet */
+		__u16 proto = ctx_get_protocol(ctx);
+
+		if (skb_change_head(ctx, 14, 0))
+			return DROP_INVALID;
+
+		if (eth_store_proto(ctx, proto, 0) < 0)
+			return DROP_WRITE_ERROR;
+
+		if (!revalidate_data_with_eth_hlen(ctx, &data, &data_end, &ip4,
+						   __ETH_HLEN))
+			return DROP_FRAG_NOSUPPORT;
+	}
 #endif
 
 		dmac = map_lookup_elem(&NODEPORT_NEIGH4, &ip4->daddr);

@@ -427,6 +427,7 @@ static __always_inline int snat_v4_rewrite_ingress(struct __ctx_buff *ctx,
 	if (csum.offset &&
 	    csum_l4_replace(ctx, off, &csum, 0, sum, BPF_F_PSEUDO_HDR) < 0)
 		return DROP_CSUM_L4;
+
 	return 0;
 }
 
