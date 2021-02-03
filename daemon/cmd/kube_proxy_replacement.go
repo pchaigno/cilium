@@ -109,6 +109,15 @@ func initKubeProxyReplacementOptions() (strict bool) {
 			log.Fatalf("Invalid value for --%s: %s", option.LoadBalancerDSRDispatch, option.Config.LoadBalancerDSRDispatch)
 		}
 
+		if option.Config.LoadBalancerPMTUDiscovery {
+			if option.Config.DatapathMode != datapathOption.DatapathModeLBOnly {
+				log.Fatalf("PMTU discovery only supported for --%s=%s", option.DatapathMode, datapathOption.DatapathModeLBOnly)
+			}
+			if option.Config.NodePortAcceleration == option.NodePortAccelerationDisabled {
+				log.Fatalf("PMTU discovery currently only available under XDP acceleration")
+			}
+		}
+
 		if option.Config.LoadBalancerRSSv4CIDR != "" {
 			ip, cidr, err := net.ParseCIDR(option.Config.LoadBalancerRSSv4CIDR)
 			if ip.To4() == nil {

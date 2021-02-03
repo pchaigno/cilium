@@ -579,6 +579,9 @@ func init() {
 		option.NodePortAccelerationNative, option.NodePortAccelerationDisabled))
 	option.BindEnv(option.LoadBalancerAcceleration)
 
+	flags.Bool(option.LoadBalancerPMTUDiscovery, false, "BPF load balancer PMTU discovery handling for clients")
+	option.BindEnv(option.LoadBalancerPMTUDiscovery)
+
 	flags.Uint(option.MaglevTableSize, maglev.DefaultTableSize, "Maglev per service backend table size (parameter M)")
 	option.BindEnv(option.MaglevTableSize)
 

@@ -266,6 +266,9 @@ const (
 	// Alias to DSR/IPIP IPv6 source CIDR
 	LoadBalancerRSSv6CIDR = "bpf-lb-rss-ipv6-src-cidr"
 
+	// Alias to client-side PMTU discovery
+	LoadBalancerPMTUDiscovery = "bpf-lb-pmtu-discovery"
+
 	// Alias to NodePortAlg
 	LoadBalancerAlg = "bpf-lb-algorithm"
 
@@ -1865,6 +1868,10 @@ type DaemonConfig struct {
 	LoadBalancerRSSv6CIDR string
 	LoadBalancerRSSv6     net.IPNet
 
+	// LoadBalancerPMTUDiscovery indicates whether LB should reply with ICMP
+	// frag needed messages to client (when needed)
+	LoadBalancerPMTUDiscovery bool
+
 	// Maglev backend table size (M) per service. Must be prime number.
 	MaglevTableSize int
 
@@ -2645,6 +2652,7 @@ func (c *DaemonConfig) Populate() {
 	c.LoadBalancerDSRDispatch = viper.GetString(LoadBalancerDSRDispatch)
 	c.LoadBalancerRSSv4CIDR = viper.GetString(LoadBalancerRSSv4CIDR)
 	c.LoadBalancerRSSv6CIDR = viper.GetString(LoadBalancerRSSv6CIDR)
+	c.LoadBalancerPMTUDiscovery = viper.GetBool(LoadBalancerPMTUDiscovery)
 
 	err = c.populateMasqueradingSettings()
 	if err != nil {

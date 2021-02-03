@@ -31,6 +31,10 @@
 #define AF_INET6 10
 #endif
 
+#ifndef IP_DF
+#define IP_DF 0x4000
+#endif
+
 #ifndef EVENT_SOURCE
 #define EVENT_SOURCE 0
 #endif
@@ -344,7 +348,7 @@ enum {
 #define DROP_POLICY		-133
 #define DROP_INVALID		-134
 #define DROP_CT_INVALID_HDR	-135
-#define DROP_UNUSED3		-136 /* unused */
+#define DROP_FRAG_NEEDED	-136
 #define DROP_CT_UNKNOWN_PROTO	-137
 #define DROP_UNUSED4		-138 /* unused */
 #define DROP_UNKNOWN_L3		-139

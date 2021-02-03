@@ -128,13 +128,32 @@ bpf_skip_recirculation(const struct __ctx_buff *ctx __maybe_unused)
 #endif
 }
 
-static __always_inline __u64 ctx_adjust_room_dsr_flags(void)
+static __always_inline __u64 ctx_adjust_hroom_dsr_flags(void)
 {
 #ifdef BPF_HAVE_CSUM_LEVEL
 	return BPF_F_ADJ_ROOM_NO_CSUM_RESET;
 #else
 	return 0;
 #endif
+}
+
+static __always_inline bool dsr_fail_needs_reply(int code __maybe_unused)
+{
+#ifdef ENABLE_DSR_ICMP_ERRORS
+	if (code == DROP_FRAG_NEEDED)
+		return true;
+#endif
+	return false;
+}
+
+static __always_inline bool dsr_is_too_big(struct __ctx_buff *ctx __maybe_unused,
+					   __be16 expanded_tot_len __maybe_unused)
+{
+#ifdef ENABLE_DSR_ICMP_ERRORS
+	if (bpf_ntohs(expanded_tot_len) > MTU)
+		return true;
+#endif
+	return false;
 }
 
 #ifdef ENABLE_IPV6
@@ -239,8 +258,8 @@ static __always_inline int dsr_set_ipip6(struct __ctx_buff *ctx,
 
 	rss_gen_src6(&saddr, (union v6addr *)&ip6->saddr, l4_hint);
 
-	if (ctx_adjust_room(ctx, sizeof(*ip6), BPF_ADJ_ROOM_NET,
-			    ctx_adjust_room_dsr_flags()))
+	if (ctx_adjust_hroom(ctx, sizeof(*ip6), BPF_ADJ_ROOM_NET,
+			     ctx_adjust_hroom_dsr_flags()))
 		return DROP_INVALID;
 	if (ctx_store_bytes(ctx, l3_off + offsetof(struct ipv6hdr, payload_len),
 			    &tp_new.payload_len, 4, 0) < 0)
@@ -270,8 +289,8 @@ static __always_inline int dsr_set_ext6(struct __ctx_buff *ctx,
 	ipv6_addr_copy(&opt.addr, svc_addr);
 	opt.port = svc_port;
 
-	if (ctx_adjust_room(ctx, sizeof(opt), BPF_ADJ_ROOM_NET,
-			    ctx_adjust_room_dsr_flags()))
+	if (ctx_adjust_hroom(ctx, sizeof(opt), BPF_ADJ_ROOM_NET,
+			     ctx_adjust_hroom_dsr_flags()))
 		return DROP_INVALID;
 	if (ctx_store_bytes(ctx, ETH_HLEN + sizeof(*ip6), &opt,
 			    sizeof(opt), 0) < 0)
@@ -1050,7 +1069,7 @@ static __always_inline __be32 rss_gen_src4(__be32 client, __be32 l4_hint)
 static __always_inline int dsr_set_ipip4(struct __ctx_buff *ctx,
 					 const struct iphdr *ip4,
 					 __be32 backend_addr,
-					 __be32 l4_hint)
+					 __be32 l4_hint, int *ohead)
 {
 	const int l3_off = ETH_HLEN;
 	__be32 sum;
@@ -1077,9 +1096,15 @@ static __always_inline int dsr_set_ipip4(struct __ctx_buff *ctx,
 		.daddr		= backend_addr,
 	};
 
-	if (ctx_adjust_room(ctx, sizeof(*ip4), BPF_ADJ_ROOM_NET,
-			    ctx_adjust_room_dsr_flags()))
+	if (dsr_is_too_big(ctx, tp_new.tot_len)) {
+		*ohead = sizeof(*ip4);
+		return DROP_FRAG_NEEDED;
+	}
+
+	if (ctx_adjust_hroom(ctx, sizeof(*ip4), BPF_ADJ_ROOM_NET,
+			     ctx_adjust_hroom_dsr_flags()))
 		return DROP_INVALID;
+
 	sum = csum_diff(&tp_old, 16, &tp_new, 16, 0);
 	if (ctx_store_bytes(ctx, l3_off + offsetof(struct iphdr, tot_len),
 			    &tp_new.tot_len, 2, 0) < 0)
@@ -1097,10 +1122,11 @@ static __always_inline int dsr_set_ipip4(struct __ctx_buff *ctx,
 }
 #elif DSR_ENCAP_MODE == DSR_ENCAP_NONE
 static __always_inline int dsr_set_opt4(struct __ctx_buff *ctx,
-					struct iphdr *ip4,
-					__be32 svc_addr, __be32 svc_port)
+					struct iphdr *ip4, __be32 svc_addr,
+					__be32 svc_port, int *ohead)
 {
 	__u32 iph_old, iph_new, opt[2];
+	__be16 tot_len;
 	__be32 sum;
 
 	if (ip4->protocol == IPPROTO_TCP) {
@@ -1119,9 +1145,15 @@ static __always_inline int dsr_set_opt4(struct __ctx_buff *ctx,
 			return 0;
 	}
 
+	tot_len = bpf_htons(bpf_ntohs(ip4->tot_len) + sizeof(opt));
+	if (dsr_is_too_big(ctx, tot_len)) {
+		*ohead = sizeof(opt);
+		return DROP_FRAG_NEEDED;
+	}
+
 	iph_old = *(__u32 *)ip4;
-	ip4->ihl += 0x2; /* To accommodate u64 option. */
-	ip4->tot_len = bpf_htons(bpf_ntohs(ip4->tot_len) + 0x8);
+	ip4->ihl += sizeof(opt) >> 2;
+	ip4->tot_len = tot_len;
 	iph_new = *(__u32 *)ip4;
 
 	opt[0] = bpf_htonl(DSR_IPV4_OPT_32 | svc_port);
@@ -1130,8 +1162,8 @@ static __always_inline int dsr_set_opt4(struct __ctx_buff *ctx,
 	sum = csum_diff(&iph_old, 4, &iph_new, 4, 0);
 	sum = csum_diff(NULL, 0, &opt, sizeof(opt), sum);
 
-	if (ctx_adjust_room(ctx, 0x8, BPF_ADJ_ROOM_NET,
-			    ctx_adjust_room_dsr_flags()))
+	if (ctx_adjust_hroom(ctx, sizeof(opt), BPF_ADJ_ROOM_NET,
+			     ctx_adjust_hroom_dsr_flags()))
 		return DROP_INVALID;
 
 	if (ctx_store_bytes(ctx, ETH_HLEN + sizeof(*ip4),
@@ -1203,6 +1235,92 @@ static __always_inline int xlate_dsr_v4(struct __ctx_buff *ctx,
 	return ret;
 }
 
+static __always_inline int dsr_reply_icmp4(struct __ctx_buff *ctx,
+					   struct iphdr *ip4 __maybe_unused,
+					   int code, int ohead __maybe_unused)
+{
+#ifdef ENABLE_DSR_ICMP_ERRORS
+	const __s32 orig_dgram = 8, off = ETH_HLEN;
+	const __u32 l3_max = MAX_IPOPTLEN + sizeof(*ip4) + orig_dgram;
+	__be16 type = bpf_htons(ETH_P_IP);
+	__s32 len_new = off + ipv4_hdrlen(ip4) + orig_dgram;
+	__s32 len_old = ctx_full_len(ctx);
+	__u8 tmp[l3_max];
+	union macaddr smac, dmac;
+	struct icmphdr icmp __align_stack_8 = {
+		.type		= ICMP_DEST_UNREACH,
+		.code		= ICMP_FRAG_NEEDED,
+		.un = {
+			.frag = {
+				.mtu = bpf_htons(MTU - ohead),
+			},
+		},
+	};
+	struct iphdr ip __align_stack_8 = {
+		.ihl		= sizeof(ip) >> 2,
+		.version	= IPVERSION,
+		.ttl		= IPDEFTTL,
+		.tos		= ip4->tos,
+		.id		= ip4->id,
+		.protocol	= IPPROTO_ICMP,
+		.saddr		= ip4->daddr,
+		.daddr		= ip4->saddr,
+		.frag_off	= bpf_htons(IP_DF),
+		.tot_len	= bpf_htons(sizeof(ip) + sizeof(icmp) +
+					    len_new - off),
+	};
+
+	update_metrics(ctx_full_len(ctx), METRIC_EGRESS, -code);
+
+	if (eth_load_saddr(ctx, smac.addr, 0) < 0)
+		goto drop_err;
+	if (eth_load_daddr(ctx, dmac.addr, 0) < 0)
+		goto drop_err;
+
+	ip.check = csum_fold(csum_diff(NULL, 0, &ip, sizeof(ip), 0));
+
+	/* Given it's currently not possible to pass pkt register with
+	 * min/max len to csum_diff(), we use a workaround in that we
+	 * push zero-bytes into the payload in order to support dynamic
+	 * IPv4 header size. This works given one's complement sum does
+	 * not change.
+	 */
+	memset(tmp, 0, MAX_IPOPTLEN);
+	if (ctx_store_bytes(ctx, len_new, tmp, MAX_IPOPTLEN, 0) < 0)
+		goto drop_err;
+	if (ctx_load_bytes(ctx, off, tmp, sizeof(tmp)) < 0)
+		goto drop_err;
+
+	icmp.checksum = csum_fold(csum_diff(NULL, 0, tmp, sizeof(tmp),
+					    csum_diff(NULL, 0, &icmp,
+						      sizeof(icmp), 0)));
+
+	if (ctx_adjust_troom(ctx, -(len_old - len_new)) < 0)
+		goto drop_err;
+	if (ctx_adjust_hroom(ctx, sizeof(ip) + sizeof(icmp),
+			     BPF_ADJ_ROOM_NET,
+			     ctx_adjust_hroom_dsr_flags()) < 0)
+		goto drop_err;
+
+	if (eth_store_daddr(ctx, smac.addr, 0) < 0)
+		goto drop_err;
+	if (eth_store_saddr(ctx, dmac.addr, 0) < 0)
+		goto drop_err;
+	if (ctx_store_bytes(ctx, ETH_ALEN * 2, &type, sizeof(type), 0) < 0)
+		goto drop_err;
+	if (ctx_store_bytes(ctx, off, &ip, sizeof(ip), 0) < 0)
+		goto drop_err;
+	if (ctx_store_bytes(ctx, off + sizeof(ip), &icmp,
+			    sizeof(icmp), 0) < 0)
+		goto drop_err;
+
+	return ctx_redirect(ctx, ctx_get_ifindex(ctx), 0);
+drop_err:
+#endif
+	return send_drop_notify_error(ctx, 0, code, CTX_ACT_DROP,
+				      METRIC_EGRESS);
+}
+
 __section_tail(CILIUM_MAP_CALLS, CILIUM_CALL_IPV4_NODEPORT_DSR)
 int tail_nodeport_ipv4_dsr(struct __ctx_buff *ctx)
 {
@@ -1214,8 +1332,8 @@ int tail_nodeport_ipv4_dsr(struct __ctx_buff *ctx)
 	};
 	union macaddr *dmac = NULL;
 	void *data, *data_end;
+	int ret, ohead = 0;
 	struct iphdr *ip4;
-	int ret;
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip4)) {
 		ret = DROP_INVALID;
@@ -1225,16 +1343,19 @@ int tail_nodeport_ipv4_dsr(struct __ctx_buff *ctx)
 #if DSR_ENCAP_MODE == DSR_ENCAP_IPIP
 	ret = dsr_set_ipip4(ctx, ip4,
 			    ctx_load_meta(ctx, CB_ADDR_V4),
-			    ctx_load_meta(ctx, CB_HINT));
+			    ctx_load_meta(ctx, CB_HINT), &ohead);
 #elif DSR_ENCAP_MODE == DSR_ENCAP_NONE
 	ret = dsr_set_opt4(ctx, ip4,
 			   ctx_load_meta(ctx, CB_ADDR_V4),
-			   ctx_load_meta(ctx, CB_PORT));
+			   ctx_load_meta(ctx, CB_PORT), &ohead);
 #else
 # error "Invalid load balancer DSR encapsulation mode!"
 #endif
-	if (ret)
+	if (unlikely(ret)) {
+		if (dsr_fail_needs_reply(ret))
+			return dsr_reply_icmp4(ctx, ip4, ret, ohead);
 		goto drop_err;
+	}
 	if (!revalidate_data(ctx, &data, &data_end, &ip4)) {
 		ret = DROP_INVALID;
 		goto drop_err;
@@ -1277,7 +1398,6 @@ int tail_nodeport_ipv4_dsr(struct __ctx_buff *ctx)
 	}
 
 	return ctx_redirect(ctx, fib_params.l.ifindex, 0);
-
 drop_err:
 	return send_drop_notify_error(ctx, 0, ret, CTX_ACT_DROP, METRIC_EGRESS);
 }
