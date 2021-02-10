@@ -2145,6 +2145,30 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 					enableBackgroundReport = true
 				})
 
+				Context("Tests with Wireguard (L2-less)", func() {
+					It("Tests NodePort", func() {
+						wgYAML := helpers.ManifestGet(kubectl.BasePath(), "kube-wireguarder.yaml")
+						res := kubectl.ApplyDefault(wgYAML)
+						Expect(res).Should(helpers.CMDSuccess(), "unable to apply %s", wgYAML)
+
+						err := kubectl.WaitforPods(helpers.KubeSystemNamespace, "-l app=kube-wireguarder", time.Duration(60*time.Second))
+						Expect(err).Should(BeNil())
+
+						DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
+							"devices":                      fmt.Sprintf(`'{%s,%s}'`, privateIface, "wg0"),
+							"nodePort.directRoutingDevice": "wg0",
+							"tunnel":                       "disabled",
+							"autoDirectNodeRoutes":         "true",
+						})
+
+						// TODO(brb) install routes
+
+						Expect(fmt.Errorf("foobar")).Should(BeNil())
+
+						testNodePort(true, false, helpers.ExistNodeWithoutCilium(), 0)
+					})
+				})
+
 				Context("Tests with vxlan", func() {
 					It("Tests NodePort", func() {
 						testNodePort(true, false, helpers.ExistNodeWithoutCilium(), 0)

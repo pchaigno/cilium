@@ -1367,12 +1367,31 @@ int tail_nodeport_nat_ipv4(struct __ctx_buff *ctx)
 		goto drop_err;
 	}
 
-	if (ETH_HLEN == 0 && DIRECT_ROUTING_DEV_IFINDEX == NATIVE_DEV_IFINDEX)
-		/* NodePort request came to wg iface and it's going to be
-		 * forwarded over wg. The request doesn't have L2 hdr, so skip
+#if (__ctx_is == __ctx_skb)
+	/* XDP does not support L2-less devices, so skip the checks. */
+	if (IS_L3_DEV(DIRECT_ROUTING_DEV_IFINDEX))
+		/* NodePort request is going to be redirected to L3 dev, so skip
 		 * L2 addr settings.
 		 */
 		goto out_send;
+	else if(ETH_HLEN == 0) {
+		/* NodePort request is going to be redirected from L3 to L2 dev,
+		 * so we need to create L2 hdr first.
+		 */
+		__u16 proto = ctx_get_protocol(ctx);
+
+		if (skb_change_head(ctx, 14, 0))
+			return DROP_INVALID;
+
+		if (eth_store_proto(ctx, proto, 0) < 0)
+			return DROP_WRITE_ERROR;
+
+		if (!revalidate_data_with_eth_hlen(ctx, &data, &data_end, &ip4,
+						   __ETH_HLEN))
+			return DROP_INVALID;
+
+	}
+#endif
 
 	if (nodeport_lb_hairpin())
 		dmac = map_lookup_elem(&NODEPORT_NEIGH4, &ip4->daddr);
@@ -1669,7 +1688,7 @@ static __always_inline int rev_nodeport_lb4(struct __ctx_buff *ctx, int *ifindex
 
 		if (!revalidate_data_with_eth_hlen(ctx, &data, &data_end, &ip4,
 						   __ETH_HLEN))
-			return DROP_FRAG_NOSUPPORT;
+			return DROP_INVALID;
 	}
 #endif
 
