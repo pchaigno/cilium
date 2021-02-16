@@ -17,7 +17,7 @@ spec:
       hostNetwork: true
       containers:
       - name: kube-wireguarder
-        image: docker.io/cilium/kube-wireguarder:0.0.1
+        image: brb0/kube-wg:0.0.6
         imagePullPolicy: IfNotPresent
         command:
         - /main
@@ -25,10 +25,6 @@ spec:
         - --wg-subnet=172.16.42.0/24
         securityContext:
           privileged: true
-        lifecycle:
-          preStop:
-            exec:
-              command: ["/main", "-cleanup"]
         readinessProbe:
           exec:
             command:
@@ -54,8 +50,10 @@ metadata:
 rules:
 - apiGroups:
   - ''
+  - cilium.io
   resources:
   - nodes
+  - ciliumnodes
   verbs:
   - get
   - list

@@ -509,6 +509,8 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 }
 
 func isL3DevMacro() (string, error) {
+	anyL3Dev := false
+
 	macro := `({ \
 	bool is_l3 = false; \
 	switch (ifindex) { \`
@@ -516,10 +518,15 @@ func isL3DevMacro() (string, error) {
 		if link, err := netlink.LinkByName(iface); err != nil {
 			return "", err
 		} else if link.Attrs().HardwareAddr == nil {
+			anyL3Dev = true
 			macro += fmt.Sprintf("\ncase %d: is_l3 = true; break; \\", link.Attrs().Index)
 		}
 	}
 	macro += "\n} \\\n is_l3; })\n"
+
+	if !anyL3Dev {
+		return "false", nil
+	}
 
 	return macro, nil
 }
