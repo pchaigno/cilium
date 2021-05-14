@@ -7,7 +7,32 @@ on:
       - master
 
 jobs:
+  check_changes:
+    name: Deduce required tests from code changes
+    runs-on: ubuntu-latest
+    outputs:
+      docs-tree: ${{ steps.docs-tree.outputs.src }}
+    steps:
+      - name: Check code changes
+        uses: dorny/paths-filter@v2
+        id: docs-tree
+        with:
+          base: ${{ github.event.pull_request.base.sha || github.event.before }}
+          filters: |
+            src:
+              - 'Documentation/**'
+              - 'bugtool/cmd/**'
+              - 'cilium/cmd/**'
+              - 'cilium-health/cmd/**'
+              - 'daemon/cmd/**'
+              - 'hubble-relay/cmd/**'
+              - 'operator/cmd/**'
+
+  # Runs only if code under Documentation or */cmd/ is changed as the docs
+  # should be unaffected otherwise.
   build-html:
+    needs: check_changes
+    if: ${{ needs.check_changes.outputs.docs-tree == 'true' }}
     name: Validate & Build HTML
     runs-on: ubuntu-18.04
     steps:
