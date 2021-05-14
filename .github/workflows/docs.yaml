@@ -7,7 +7,27 @@ on:
       - master
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs-tree: ${{ steps.docs-tree.outputs.src }}
+    steps:
+      - uses: dorny/paths-filter@v2
+        id: docs-tree
+        with:
+          filters: |
+            src:
+              - 'Documentation/**'
+              - 'bugtool/cmd/**'
+              - 'cilium/cmd/**'
+              - 'cilium-health/cmd/**'
+              - 'daemon/cmd/**'
+              - 'hubble-relay/cmd/**'
+              - 'operator/cmd/**'
+
   build-html:
+    needs: changes
+    if: ${{ needs.changes.outputs.docs-tree == 'true' }}
     name: Validate & Build HTML
     runs-on: ubuntu-18.04
     steps:
