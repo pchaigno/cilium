@@ -2,6 +2,10 @@ name: build_commits
 
 on: [pull_request]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   build_commits:
     name: Check if build works for every commit
