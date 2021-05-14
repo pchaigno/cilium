@@ -7,6 +7,24 @@ on:
       - master
 
 jobs:
+  check_changes:
+    name: Deduce required tests from code changes
+    runs-on: ubuntu-latest
+    outputs:
+      bpf-tree: ${{ steps.changes.outputs.bpf-tree }}
+      coccinelle: ${{ steps.changes.outputs.coccinelle }}
+    steps:
+      - name: Check code changes
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          base: ${{ github.event.pull_request.base.sha || github.event.before }}
+          filters: |
+            bpf-tree:
+              - 'bpf/**'
+            coccinelle:
+              - 'contrib/coccinelle/**'
+
   checkpatch:
     name: checkpatch
     runs-on: ubuntu-latest
@@ -18,7 +36,11 @@ jobs:
           fetch-depth: 0
       - name: Run checkpatch.pl
         uses: docker://quay.io/cilium/cilium-checkpatch:cc7e6b5811f46d7b040dedfe2f6b0010c2c51a12@sha256:9160b6ca58eb99a3ed5d567a494b2e2001325ebad32029c5bd17a8ae4df01044
+
+  # Runs only if code under bpf/ or contrib/coccinnelle/ is changed. 
   coccicheck:
+    needs: check_changes
+    if: ${{ needs.check_changes.outputs.bpf-tree == 'true' || needs.check_changes.outputs.coccinelle == 'true' }}
     name: coccicheck
     runs-on: ubuntu-latest
     steps:
@@ -28,7 +50,11 @@ jobs:
       - uses: docker://cilium/coccicheck:2.0
         with:
           entrypoint: ./contrib/coccinelle/check-cocci.sh
+
+  # Runs only if code under bpf/ is changed.
   build_all:
+    needs: check_changes
+    if: ${{ needs.check_changes.outputs.bpf-tree == 'true' }}
     name: build datapath
     runs-on: ubuntu-latest
     steps:
