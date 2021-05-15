@@ -5,6 +5,10 @@ on:
     # run once a day at midnight
     - cron: '0 0 * * *'
 
+concurrency:
+  group: "${{ github.workflow }} ${{ 'scheduled' }}"
+  cancel-in-progress: true
+
 env:
   KIND_VERSION: v0.9.0
   KIND_CONFIG: .github/kind-config.yaml

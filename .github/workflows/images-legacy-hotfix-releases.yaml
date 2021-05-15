@@ -5,6 +5,10 @@ on:
     branches:
       - hf/master/**
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.after }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     if: ${{ github.repository == 'cilium/cilium' }}

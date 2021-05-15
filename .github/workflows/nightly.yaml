@@ -3,6 +3,10 @@ on:
   schedule:
     - cron: '0 2 * * *' # run at 2 AM UTC
 
+concurrency:
+  group: "${{ github.workflow }} ${{ 'scheduled' }}"
+  cancel-in-progress: true
+
 jobs:
   policy-stress-test:
     name: Start Nightly Policy Stress tests

@@ -13,6 +13,10 @@ on:
   #    - "labeled"
   ###
 
+concurrency:
+  group: "${{ github.workflow }} ${{ github.event.issue.pull_request.url || 'scheduled' }}"
+  cancel-in-progress: true
+
 env:
   name: ${{ github.repository_owner }}-${{ github.event.repository.name }}-${{ github.run_id }}
   location: westeurope
