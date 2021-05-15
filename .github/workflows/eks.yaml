@@ -19,11 +19,23 @@ env:
   check_url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      tested: ${{ steps.tested-tree.outputs.src }}
+    steps:
+      - uses: dorny/paths-filter@v2
+        id: tested-tree
+        with:
+          filters: |
+            src:
+              - '!(test|Documentation)/**'
+
   installation-and-connectivity:
     if: |
       (github.event.issue.pull_request && (
         startsWith(github.event.comment.body, 'ci-eks') ||
-        startsWith(github.event.comment.body, 'test-me-please')
+        (startsWith(github.event.comment.body, 'test-me-please') && (needs.changes.outputs.tested == 'true'))
       )) ||
       (github.event_name == 'schedule' && github.repository == 'cilium/cilium') ||
       github.event.label.name == 'ci-run/eks'
