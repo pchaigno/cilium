@@ -6,7 +6,26 @@ on:
     branches:
       - master
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request && github.event.pull_request.number || github.event.after }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      bpf-tree: ${{ steps.changes.outputs.bpf-tree }}
+      coccinelle: ${{ steps.changes.outputs.coccinelle }}
+    steps:
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            bpf-tree:
+              - 'bpf/**'
+            coccinelle:
+              - 'contrib/coccinelle/**'
+
   checkpatch:
     name: checkpatch
     runs-on: ubuntu-latest
@@ -18,7 +37,10 @@ jobs:
           fetch-depth: 0
       - name: Run checkpatch.pl
         uses: docker://quay.io/cilium/cilium-checkpatch:cc7e6b5811f46d7b040dedfe2f6b0010c2c51a12@sha256:9160b6ca58eb99a3ed5d567a494b2e2001325ebad32029c5bd17a8ae4df01044
+
   coccicheck:
+    needs: changes
+    if: ${{ needs.changes.outputs.bpf-tree == 'true' || needs.changes.outputs.coccinelle == 'true' }}
     name: coccicheck
     runs-on: ubuntu-latest
     steps:
@@ -28,7 +50,10 @@ jobs:
       - uses: docker://cilium/coccicheck:2.0
         with:
           entrypoint: ./contrib/coccinelle/check-cocci.sh
+
   build_all:
+    needs: changes
+    if: ${{ needs.changes.outputs.bpf-tree == 'true' }}
     name: build datapath
     runs-on: ubuntu-latest
     steps:
@@ -43,7 +68,7 @@ jobs:
           path: $HOME/.clang
           key: llvm-10.0
       - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1.2.2
+        uses: KyleMayes/install-llvm-action@v1.3.0
         with:
           version: "10.0"
           directory: $HOME/.clang

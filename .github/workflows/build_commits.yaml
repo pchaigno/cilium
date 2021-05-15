@@ -2,6 +2,10 @@ name: build_commits
 
 on: [pull_request]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   build_commits:
     name: Check if build works for every commit
@@ -26,7 +30,7 @@ jobs:
           key: llvm-10.0
           
       - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@4609a7b44dbb15353bdb46dafaac2914948399c9
+        uses: KyleMayes/install-llvm-action@v1.3.0
         with:
           version: "10.0"
           directory: $HOME/.clang
@@ -51,7 +55,25 @@ jobs:
             ${{ github.event.pull_request.commits_url }})
           PR_FIRST_SHA=$(echo "$PR_COMMITS_API_JSON" | jq -r ".[0].sha")
           PR_PARENT_SHA=$(git rev-parse "${PR_FIRST_SHA}^")
-          git rebase --exec "make build -j $(nproc) && make -C bpf build_all -j $(nproc)" $PR_PARENT_SHA
+          git rebase --exec "make build -j $(nproc)" $PR_PARENT_SHA
+
+      - uses: dorny/paths-filter@v2
+        id: bpf-tree
+        with:
+          filters: |
+            src:
+              - 'bpf/**'
+
+      - name: Check if datapath build works for every commit
+        if: steps.bpf-tree.outputs.src == 'true'
+        run: |
+          PR_COMMITS_API_JSON=$(curl \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            ${{ github.event.pull_request.commits_url }})
+          PR_FIRST_SHA=$(echo "$PR_COMMITS_API_JSON" | jq -r ".[0].sha")
+          PR_PARENT_SHA=$(git rev-parse "${PR_FIRST_SHA}^")
+          git rebase --exec "make -C bpf build_all -j $(nproc)" $PR_PARENT_SHA
         
       - name: Failed commit during the build
         if: ${{ failure() }}
