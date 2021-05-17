@@ -37,7 +37,7 @@ var (
 var bpfIPCacheListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List endpoint IPs (local and remote) and their corresponding security identities",
+	Short:   "List endpoint IPs (local and remote), their corresponding security identities, and their tunnel endpoint",
 	Long:    ipCacheListUsage,
 	Run: func(cmd *cobra.Command, args []string) {
 		common.RequireRootPrivilege("cilium bpf ipcache list")
