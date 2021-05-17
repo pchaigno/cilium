@@ -99,6 +99,8 @@ var _ = Describe("K8sVerifier", func() {
 		switch {
 		case helpers.RunsOnNetNextKernel():
 			kernel = "netnext"
+		case helpers.RunsOn414Kernel():
+			kernel = "414"
 		case helpers.RunsOn419Kernel():
 			kernel = "419"
 		case helpers.RunsOn54Kernel():
