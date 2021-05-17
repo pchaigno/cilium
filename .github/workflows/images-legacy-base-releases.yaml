@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build-and-push:
     timeout-minutes: 30
-    if: ${{ github.repository == 'cilium/cilium' }}
+    if: ${{ github.repository == 'pchaigno/cilium' }}
     environment: release-base-images
     runs-on: ubuntu-20.04
     strategy:
@@ -101,7 +101,7 @@ jobs:
           retention-days: 1
 
   image-digests:
-    if: ${{ github.repository == 'cilium/cilium' }}
+    if: ${{ github.repository == 'pchaigno/cilium' }}
     name: Display Digests
     runs-on: ubuntu-20.04
     needs: build-and-push
