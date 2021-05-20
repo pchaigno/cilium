@@ -69,7 +69,7 @@ jobs:
           git diff --exit-code || (echo "please run 'make -C install/kubernetes docs' and submit your changes"; exit 1)
 
   conformance-test:
-    if: ${{ github.repository == 'cilium/cilium' }}
+    if: ${{ github.repository == 'pchaigno/cilium' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

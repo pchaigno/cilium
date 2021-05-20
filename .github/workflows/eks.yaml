@@ -61,7 +61,7 @@ jobs:
         startsWith(github.event.comment.body, 'ci-eks') ||
         (startsWith(github.event.comment.body, 'test-me-please') && (needs.check_changes.outputs.tested == 'true'))
       )) ||
-      (github.event_name == 'schedule' && github.repository == 'cilium/cilium') ||
+      (github.event_name == 'schedule' && github.repository == 'pchaigno/cilium') ||
       github.event.label.name == 'ci-run/eks'
     runs-on: ubuntu-latest
     timeout-minutes: 45

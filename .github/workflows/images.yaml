@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   lint:
-    if: github.repository == 'cilium/cilium'
+    if: github.repository == 'pchaigno/cilium'
     name: Lint image build logic
     runs-on: ubuntu-18.04
     steps:

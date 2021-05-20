@@ -27,7 +27,7 @@ env:
 
 jobs:
   conformance-test-ipv6:
-    if: ${{ github.repository == 'cilium/cilium' }}
+    if: ${{ github.repository == 'pchaigno/cilium' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
