@@ -12,6 +12,12 @@
 # include "policy.h"
 # include "policy_log.h"
 
+static __always_inline bool redirect_to_proxy(int verdict, __u8 dir)
+{
+	return is_defined(ENABLE_HOST_REDIRECT) && verdict > 0 &&
+	       (dir == CT_NEW || dir == CT_ESTABLISHED || dir == CT_REOPENED);
+}
+
 # ifdef ENABLE_IPV6
 static __always_inline int
 ipv6_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id, __u32 *monitor)
@@ -252,6 +258,7 @@ ipv4_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id,
 	__u32 dst_id = 0;
 	void *data, *data_end;
 	struct iphdr *ip4;
+	__u8 reason;
 
 	if (src_id != HOST_ID) {
 #  ifndef ENABLE_MASQUERADE
@@ -275,6 +282,15 @@ ipv4_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id,
 	if (ret < 0)
 		return ret;
 
+	/* Check it this is return traffic to an ingress proxy. */
+	if ((ret == CT_REPLY || ret == CT_RELATED) && ct_state.proxy_redirect) {
+		/* Stack will do a socket match and deliver locally. */
+		return ctx_redirect_to_proxy4(ctx, &tuple, 0, true);
+		/* TODO Clarify if from_host should be false? */
+	}
+
+	reason = ret;
+
 	/* Retrieve destination identity. */
 	info = lookup_ip4_remote_endpoint(ip4->daddr);
 	if (info && info->sec_label)
@@ -292,6 +308,10 @@ ipv4_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id,
 					   tuple.nexthdr, POLICY_EGRESS, 0,
 					   verdict, policy_match_type, audited);
 		return verdict;
+	}
+
+	if (tc_index_skip_egress_proxy(ctx)) {
+		verdict = 0;
 	}
 
 	switch (ret) {
@@ -319,6 +339,17 @@ ipv4_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id,
 		return DROP_UNKNOWN_CT;
 	}
 
+	if (redirect_to_proxy(verdict, reason)) {
+		/* Trace the packet before it is forwarded to proxy */
+		send_trace_notify(ctx, TRACE_TO_PROXY, src_id, dst_id,
+				  0, 0, reason, *monitor);
+		ctx_redirect_to_proxy4(ctx, &tuple, verdict, true);
+		/* TODO: Check result from ctx_redirect_to_proxy4 for BPF TPROXY. */
+		/* Store meta: essential for proxy ingress, see bpf_host.c */
+		ctx_store_meta(ctx, CB_PROXY_MAGIC, ctx->mark);
+		return redirect(CILIUM_IFINDEX, BPF_F_INGRESS);
+	}
+
 	return CTX_ACT_OK;
 }
 
@@ -335,6 +366,7 @@ ipv4_host_policy_ingress(struct __ctx_buff *ctx, __u32 *src_id)
 	bool is_untracked_fragment = false;
 	void *data, *data_end;
 	struct iphdr *ip4;
+	__u8 reason;
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip4))
 		return DROP_INVALID;
@@ -366,6 +398,14 @@ ipv4_host_policy_ingress(struct __ctx_buff *ctx, __u32 *src_id)
 	if (ret < 0)
 		return ret;
 
+	/* Check it this is return traffic to an egress proxy. */
+	if ((ret == CT_REPLY || ret == CT_RELATED) && ct_state.proxy_redirect) {
+		/* Stack will do a socket match and deliver locally. */
+		return ctx_redirect_to_proxy4(ctx, &tuple, 0, false);
+	}
+
+	reason = ret;
+
 	/* Retrieve source identity. */
 	info = lookup_ip4_remote_endpoint(ip4->saddr);
 	if (info && info->sec_label)
@@ -385,6 +425,10 @@ ipv4_host_policy_ingress(struct __ctx_buff *ctx, __u32 *src_id)
 					   tuple.nexthdr, POLICY_INGRESS, 0,
 					   verdict, policy_match_type, audited);
 		return verdict;
+	}
+
+	if (tc_index_skip_ingress_proxy(ctx)) {
+		verdict = 0;
 	}
 
 	switch (ret) {
@@ -412,6 +456,17 @@ ipv4_host_policy_ingress(struct __ctx_buff *ctx, __u32 *src_id)
 
 	default:
 		return DROP_UNKNOWN_CT;
+	}
+
+	if (redirect_to_proxy(verdict, reason)) {
+		/* Trace the packet before it is forwarded to proxy */
+		send_trace_notify(ctx, TRACE_TO_PROXY, *src_id, dst_id,
+				  0, 0, reason, monitor);
+		ctx_redirect_to_proxy4(ctx, &tuple, verdict, true);
+		/* TODO: Check result from ctx_redirect_to_proxy4 for BPF TPROXY. */
+		/* Store meta: essential for proxy ingress, see bpf_host.c */
+		ctx_store_meta(ctx, CB_PROXY_MAGIC, ctx->mark);
+		// return redirect(CILIUM_IFINDEX, BPF_F_INGRESS);
 	}
 
 	/* This change is necessary for packets redirected from the lxc device to
