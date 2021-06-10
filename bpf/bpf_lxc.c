@@ -53,7 +53,7 @@
 static __always_inline bool redirect_to_proxy(int verdict, __u8 dir)
 {
 	return is_defined(ENABLE_HOST_REDIRECT) && verdict > 0 &&
-	       (dir == CT_NEW || dir == CT_ESTABLISHED ||  dir == CT_REOPENED);
+	       (dir == CT_NEW || dir == CT_ESTABLISHED || dir == CT_REOPENED);
 }
 #endif
 

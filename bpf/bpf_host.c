@@ -505,12 +505,12 @@ handle_ipv4(struct __ctx_buff *ctx, __u32 secctx,
 	if (from_host) {
 		/* We're on the egress path of cilium_host. */
 		ret = ipv4_host_policy_egress(ctx, secctx, ipcache_srcid, &monitor);
-		if (IS_ERR(ret))
+		if (IS_ERR(ret) || ret == TC_ACT_REDIRECT)
 			return ret;
 	} else if (!ctx_skip_host_fw(ctx)) {
 		/* We're on the ingress path of the native device. */
 		ret = ipv4_host_policy_ingress(ctx, &remote_id);
-		if (IS_ERR(ret))
+		if (IS_ERR(ret) || ret == TC_ACT_REDIRECT)
 			return ret;
 	}
 #endif /* ENABLE_HOST_FIREWALL */
