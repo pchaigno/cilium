@@ -948,9 +948,13 @@ func testHostFirewallWithPath(kubectl *helpers.Kubectl, randomNs, client, server
 	ExpectWithOffset(2, err).Should(BeNil(), "Failure to retrieve IP of pod %s", dstPod)
 	targetIP := podIP.String()
 
-	res := kubectl.ExecPodCmd(randomNs, srcPod, helpers.CurlFail("http://%s:80/", targetIP))
+	res := kubectl.ExecPodCmd(randomNs, srcPod, helpers.CurlFail("http://%s:80/private", targetIP))
+	ExpectWithOffset(2, res).ShouldNot(helpers.CMDSuccess(),
+		"Managed to reach %s:80/private from %s", targetIP, srcPod)
+
+	res = kubectl.ExecPodCmd(randomNs, srcPod, helpers.CurlFail("http://%s:80/public", targetIP))
 	ExpectWithOffset(2, res).Should(helpers.CMDSuccess(),
-		"Failed to reach %s:80 from %s", targetIP, srcPod)
+		"Failed to reach %s:80/public from %s", targetIP, srcPod)
 
 	res = kubectl.ExecPodCmd(randomNs, srcPod, helpers.CurlFail("tftp://%s:69/hello", targetIP))
 	ExpectWithOffset(2, res).ShouldNot(helpers.CMDSuccess(),

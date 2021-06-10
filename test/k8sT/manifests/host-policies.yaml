@@ -15,6 +15,10 @@ specs:
       - ports:
         - port: "80"
           protocol: TCP
+        rules:
+          http:
+          - method: "GET"
+            path: "/public"
     - fromEndpoints:
       - matchExpressions:
         - key: zgroup
@@ -28,13 +32,19 @@ specs:
       - ports:
         - port: "80"
           protocol: TCP
+        rules:
+          http:
+          - method: "GET"
+            path: "/public"
     - toEndpoints:
       - matchExpressions:
         - key: zgroup
           operator: NotIn
           values: [testServer]
-  - description: "Open required ports + test application's port between nodes"
-    nodeSelector: {}
+  - description: "Allow only test client <-> server communications on node <-> node path."
+    nodeSelector:
+      matchLabels:
+        status: lockdown
     ingress:
     - fromEntities:
       - remote-node
@@ -42,6 +52,28 @@ specs:
       - ports:
         - port: "80"
           protocol: TCP
+        rules:
+          http:
+          - method: "GET"
+            path: "/public"
+    egress:
+    - toEntities:
+      - remote-node
+      toPorts:
+      - ports:
+        - port: "80"
+          protocol: TCP
+        rules:
+          http:
+          - method: "GET"
+            path: "/public"
+  - description: "Open required ports + test application's port between nodes"
+    nodeSelector: {}
+    ingress:
+    - fromEntities:
+      - remote-node
+      toPorts:
+      - ports:
         # VXLAN tunnels between nodes
         - port: "8472"
           protocol: UDP
@@ -64,8 +96,6 @@ specs:
       - remote-node
       toPorts:
       - ports:
-        - port: "80"
-          protocol: TCP
         # VXLAN tunnels between nodes
         - port: "8472"
           protocol: UDP
