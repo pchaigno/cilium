@@ -1055,19 +1055,21 @@ bool lb4_src_range_ok(const struct lb4_service *svc __maybe_unused,
 #endif /* ENABLE_SRC_RANGE_CHECK */
 }
 
+// scope_switch means coming from the node itself
 static __always_inline
 struct lb4_service *lb4_lookup_service(struct lb4_key *key,
 				       const bool scope_switch)
 {
 	struct lb4_service *svc;
 
-	key->scope = LB_LOOKUP_SCOPE_EXT;
+	key->scope = LB_LOOKUP_SCOPE_EXT; // limited set of backends for policy=Local svcs.
 	key->backend_slot = 0;
 	svc = map_lookup_elem(&LB4_SERVICES_MAP_V2, key);
 	if (svc) {
 		if (!scope_switch || !lb4_svc_is_local_scope(svc))
 			return svc->count ? svc : NULL;
-		key->scope = LB_LOOKUP_SCOPE_INT;
+		// scope_switch && lb4_svc_is_local_scope(svc)
+		key->scope = LB_LOOKUP_SCOPE_INT; // full set of backends for policy=Local svcs.
 		svc = map_lookup_elem(&LB4_SERVICES_MAP_V2, key);
 		if (svc && svc->count)
 			return svc;

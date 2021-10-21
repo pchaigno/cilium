@@ -22,8 +22,6 @@
 #include "pcap.h"
 #include "host_firewall.h"
 
-#define CB_SRC_IDENTITY	0
-
 #ifdef ENABLE_NODEPORT
  /* Define dummy values to make bpf_{lxc,overlay}.c to compile */
 #ifndef NATIVE_DEV_IFINDEX

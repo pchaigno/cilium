@@ -449,7 +449,8 @@ resolve_srcid_ipv4(struct __ctx_buff *ctx, __u32 srcid_from_proxy,
 
 static __always_inline int
 handle_ipv4(struct __ctx_buff *ctx, __u32 secctx,
-	    __u32 ipcache_srcid __maybe_unused, const bool from_host)
+	    __u32 ipcache_srcid __maybe_unused, const bool from_host,
+	    const bool from_proxy __maybe_unused)
 {
 	struct remote_endpoint_info *info = NULL;
 	__u32 __maybe_unused remote_id = 0;
@@ -503,10 +504,16 @@ handle_ipv4(struct __ctx_buff *ctx, __u32 secctx,
 
 #ifdef ENABLE_HOST_FIREWALL
 	if (from_host) {
-		/* We're on the egress path of cilium_host. */
-		ret = ipv4_host_policy_egress(ctx, secctx, ipcache_srcid, &monitor);
-		if (IS_ERR(ret) || ret == TC_ACT_REDIRECT)
-			return ret;
+		if (from_proxy) {
+			/* Skip policy enforcement is we're coming from the proxy. */
+			ctx->mark |= MARK_MAGIC_PROXY_INGRESS;
+		} else {
+			/* We're on the egress path of cilium_host. */
+			ret = ipv4_host_policy_egress(ctx, secctx,
+						      ipcache_srcid, &monitor);
+			if (IS_ERR(ret) || ret == TC_ACT_REDIRECT)
+				return ret;
+		}
 	} else if (!ctx_skip_host_fw(ctx)) {
 		/* We're on the ingress path of the native device. */
 		ret = ipv4_host_policy_ingress(ctx, &remote_id);
@@ -612,11 +619,14 @@ static __always_inline int
 tail_handle_ipv4(struct __ctx_buff *ctx, __u32 ipcache_srcid, const bool from_host)
 {
 	__u32 proxy_identity = ctx_load_meta(ctx, CB_SRC_IDENTITY);
+	bool from_proxy = ctx_load_meta(ctx, CB_FROM_PROXY);
 	int ret;
 
 	ctx_store_meta(ctx, CB_SRC_IDENTITY, 0);
+	ctx_store_meta(ctx, CB_FROM_PROXY, 0);
 
-	ret = handle_ipv4(ctx, proxy_identity, ipcache_srcid, from_host);
+	ret = handle_ipv4(ctx, proxy_identity, ipcache_srcid, from_host,
+			  from_proxy);
 	if (IS_ERR(ret))
 		return send_drop_notify_error(ctx, proxy_identity,
 					      ret, CTX_ACT_DROP, METRIC_INGRESS);
@@ -627,13 +637,17 @@ __section_tail(CILIUM_MAP_CALLS, CILIUM_CALL_IPV4_FROM_HOST)
 int tail_handle_ipv4_from_host(struct __ctx_buff *ctx)
 {
 	__u32 ipcache_srcid = 0;
+	int ret;
 
 #if defined(ENABLE_HOST_FIREWALL) && !defined(ENABLE_MASQUERADE)
 	ipcache_srcid = ctx_load_meta(ctx, CB_IPCACHE_SRC_LABEL);
 	ctx_store_meta(ctx, CB_IPCACHE_SRC_LABEL, 0);
 #endif
 
-	return tail_handle_ipv4(ctx, ipcache_srcid, true);
+	ret = tail_handle_ipv4(ctx, ipcache_srcid, true);
+	send_trace_notify(ctx, TRACE_TO_HOST, 4242, ctx->mark, 0,
+			  CILIUM_IFINDEX, ret, 0);
+	return ret;
 }
 
 __section_tail(CILIUM_MAP_CALLS, CILIUM_CALL_IPV4_FROM_LXC)
@@ -842,6 +856,7 @@ do_netdev(struct __ctx_buff *ctx, __u16 proto, const bool from_host)
 {
 	__u32 __maybe_unused identity = 0;
 	__u32 __maybe_unused ipcache_srcid = 0;
+	bool from_proxy = false;
 	int ret;
 
 #ifdef ENABLE_IPSEC
@@ -861,7 +876,6 @@ do_netdev(struct __ctx_buff *ctx, __u16 proto, const bool from_host)
 
 	if (from_host) {
 		int trace = TRACE_FROM_HOST;
-		bool from_proxy;
 
 		from_proxy = inherit_identity_from_host(ctx, &identity);
 		if (from_proxy)
@@ -897,6 +911,10 @@ do_netdev(struct __ctx_buff *ctx, __u16 proto, const bool from_host)
 		identity = resolve_srcid_ipv4(ctx, identity, &ipcache_srcid,
 					      from_host);
 		ctx_store_meta(ctx, CB_SRC_IDENTITY, identity);
+		/* If we come from the proxy, we need to skip host policy
+		 * enforcement.
+		 */
+		ctx_store_meta(ctx, CB_FROM_PROXY, from_proxy);
 		if (from_host) {
 # if defined(ENABLE_HOST_FIREWALL) && !defined(ENABLE_MASQUERADE)
 			/* If we don't rely on BPF-based masquerading, we need
@@ -1051,6 +1069,8 @@ int to_netdev(struct __ctx_buff *ctx __maybe_unused)
 # ifdef ENABLE_IPV4
 	case bpf_htons(ETH_P_IP): {
 		ret = handle_to_netdev_ipv4(ctx, &monitor);
+		if (ret == TC_ACT_REDIRECT)
+			return ret;
 		break;
 	}
 # endif
@@ -1112,9 +1132,13 @@ int to_host(struct __ctx_buff *ctx)
 {
 	__u32 magic = ctx_load_meta(ctx, ENCRYPT_OR_PROXY_MAGIC);
 	__u16 __maybe_unused proto = 0;
+	bool from_proxy __maybe_unused = false;
 	int ret = CTX_ACT_OK;
 	bool traced = false;
 	__u32 src_id = 0;
+
+	send_trace_notify(ctx, TRACE_TO_HOST, magic, ctx->mark, 0,
+			  CILIUM_IFINDEX, ret, 0);
 
 	if ((magic & MARK_MAGIC_HOST_MASK) == MARK_MAGIC_ENCRYPT) {
 		ctx->mark = magic; /* CB_ENCRYPT_MAGIC */
@@ -1126,12 +1150,7 @@ int to_host(struct __ctx_buff *ctx)
 
 		ctx_store_meta(ctx, CB_PROXY_MAGIC, 0);
 		ret = ctx_redirect_to_proxy_first(ctx, port);
-		if (IS_ERR(ret))
-			goto out;
-		/* We already traced this in the previous prog with more
-		 * background context, skip trace here.
-		 */
-		traced = true;
+		goto out;
 	}
 
 #ifdef ENABLE_IPSEC
@@ -1148,6 +1167,12 @@ int to_host(struct __ctx_buff *ctx)
 				  CILIUM_IFINDEX, ret, 0);
 
 #ifdef ENABLE_HOST_FIREWALL
+	magic = ctx->mark & MARK_MAGIC_HOST_MASK;
+	if (magic == MARK_MAGIC_PROXY_INGRESS || magic == MARK_MAGIC_PROXY_INGRESS) {
+		ret = CTX_ACT_OK;
+		goto out;
+	}
+
 	if (!validate_ethertype(ctx, &proto)) {
 		ret = DROP_UNSUPPORTED_L2;
 		goto out;
