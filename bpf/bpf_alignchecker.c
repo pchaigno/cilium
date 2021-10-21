@@ -6,7 +6,6 @@
 #define TRACE_NOTIFY
 #define DROP_NOTIFY
 #define POLICY_VERDICT_NOTIFY
-#define ENABLE_EGRESS_GATEWAY
 #define ENABLE_CAPTURE
 #undef ENABLE_ARP_RESPONDER
 
@@ -91,6 +90,8 @@ int main(void)
 	DECLARE(struct, capture4_wcard, iter);
 	DECLARE(struct, capture6_wcard, iter);
 	DECLARE(struct, capture_rule, iter);
+	DECLARE(struct, srv6_key4, iter);
+	DECLARE(struct, srv6_key6, iter);
 
 	return 0;
 }
