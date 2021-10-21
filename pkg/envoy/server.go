@@ -18,6 +18,7 @@ import (
 	"github.com/cilium/cilium/pkg/envoy/xds"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging/logfields"
+	"github.com/cilium/cilium/pkg/node"
 	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/policy"
 	"github.com/cilium/cilium/pkg/policy/api"
@@ -1394,6 +1395,18 @@ func (s *XDSServer) UpdateNetworkPolicy(ep logger.EndpointUpdater, policy *polic
 		ep.GetIPv6Address(),
 		ep.GetIPv4Address(),
 	}
+	if ep.IsHost() {
+		ips = []string{
+			node.GetInternalIPv4Router().String(),
+			node.GetIPv6Router().String(),
+			node.GetIPv4().String(),
+			node.GetIPv6().String(),
+		}
+	}
+	for _, ip := range ips {
+		log.Infof("Host endpoint IP for proxy: %s", ip)
+	}
+
 	policies := make([]*cilium.NetworkPolicy, 0, len(ips))
 	for _, ip := range ips {
 		if ip == "" {

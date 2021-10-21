@@ -43,6 +43,7 @@ func (m *ProxyUpdaterMock) GetLabelsSHA() string {
 	return labels.NewLabelsFromModel(m.Labels).SHA256Sum()
 }
 func (m *ProxyUpdaterMock) HasSidecarProxy() bool       { return m.SidecarProxy }
+func (m *ProxyUpdaterMock) IsHost() bool                { return false }
 func (m *ProxyUpdaterMock) ConntrackName() string       { return m.ConntrackNameLocked() }
 func (m *ProxyUpdaterMock) ConntrackNameLocked() string { return "global" }
 

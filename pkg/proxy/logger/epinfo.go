@@ -21,6 +21,7 @@ type EndpointInfoSource interface {
 	GetLabels() []string
 	GetLabelsSHA() string
 	HasSidecarProxy() bool
+	IsHost() bool
 	// ConntrackName assumes that the caller has *not* acquired any mutexes
 	// that may be associated with this EndpointInfoSource. It is (unfortunately)
 	// up to the caller to know when to use this vs. ConntrackNameLocked, which
