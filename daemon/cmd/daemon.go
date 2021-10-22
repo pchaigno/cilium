@@ -80,6 +80,7 @@ import (
 	"github.com/cilium/cilium/pkg/service"
 	serviceStore "github.com/cilium/cilium/pkg/service/store"
 	"github.com/cilium/cilium/pkg/sockops"
+	"github.com/cilium/cilium/pkg/srv6policy"
 	"github.com/cilium/cilium/pkg/status"
 	"github.com/cilium/cilium/pkg/trigger"
 	cnitypes "github.com/cilium/cilium/plugins/cilium-cni/types"
@@ -172,6 +173,8 @@ type Daemon struct {
 	bgpSpeaker *speaker.MetalLBSpeaker
 
 	egressGatewayManager *egressgateway.Manager
+
+	srv6PolicyManager *srv6policy.Manager
 
 	apiLimiterSet *rate.APILimiterSet
 
@@ -498,6 +501,10 @@ func NewDaemon(ctx context.Context, cancel context.CancelFunc, epMgr *endpointma
 		d.egressGatewayManager = egressgateway.NewEgressGatewayManager(&d)
 	}
 
+	if option.Config.EnableSRv6 {
+		d.srv6PolicyManager = srv6policy.NewSRv6PolicyManager()
+	}
+
 	d.k8sWatcher = watchers.NewK8sWatcher(
 		d.endpointManager,
 		d.nodeDiscovery.Manager,
@@ -508,6 +515,7 @@ func NewDaemon(ctx context.Context, cancel context.CancelFunc, epMgr *endpointma
 		d.redirectPolicyManager,
 		d.bgpSpeaker,
 		d.egressGatewayManager,
+		d.srv6PolicyManager,
 		option.Config,
 	)
 	nd.RegisterK8sNodeGetter(d.k8sWatcher)
