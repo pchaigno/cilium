@@ -371,6 +371,22 @@ ct_recreate6:
 	}
 #endif /* ENABLE_HOST_FIREWALL && !ENABLE_ROUTING */
 
+#ifdef ENABLE_SRV6
+	{
+		union v6addr *sid;
+
+		if (is_cluster_destination6(ip6, *dst_id, tunnel_endpoint))
+			goto skip_srv6;
+
+		sid = lookup_ip6_srv6(&ip6->saddr, &ip6->daddr);
+		if (!sid)
+			goto skip_srv6;
+
+		/* TODO: Perform SRv6 encapsulation. */
+	}
+skip_srv6:
+#endif
+
 	/* The packet goes to a peer not managed by this agent instance */
 #ifdef TUNNEL_MODE
 # ifdef ENABLE_WIREGUARD
@@ -876,6 +892,22 @@ skip_egress_gateway:
 									WORLD_ID, monitor);
 		}
 	}
+#endif
+
+#ifdef ENABLE_SRV6
+	{
+		union v6addr *sid;
+
+		if (is_cluster_destination4(ip4, *dst_id, tunnel_endpoint))
+			goto skip_srv6;
+
+		sid = lookup_ip4_srv6(ip4->saddr, ip4->daddr);
+		if (!sid)
+			goto skip_srv6;
+
+		/* TODO: Perform SRv6 encapsulation. */
+	}
+skip_srv6:
 #endif
 
 #ifdef TUNNEL_MODE
