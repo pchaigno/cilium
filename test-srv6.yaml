@@ -1,0 +1,12 @@
+apiVersion: cilium.io/v2alpha1
+kind: CiliumEgressSRv6Policy
+metadata:
+  name: egress-policy
+spec:
+  egress:
+  - podSelector:
+      matchLabels:
+        type: client
+  destinationCIDRs:
+  - 192.168.56.12/32
+  destinationSID: fd04::13
