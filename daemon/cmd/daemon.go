@@ -880,7 +880,7 @@ func NewDaemon(ctx context.Context, cancel context.CancelFunc, epMgr *endpointma
 	// BPF masquerade depends on BPF NodePort and require host-reachable svc to
 	// be fully enabled in the tunneling mode, so the following checks should
 	// happen after invoking initKubeProxyReplacementOptions().
-	if option.Config.EnableIPv4Masquerade && option.Config.EnableBPFMasquerade &&
+	if option.Config.MasqueradingEnabled() && option.Config.EnableBPFMasquerade &&
 		(!option.Config.EnableNodePort || option.Config.EgressMasqueradeInterfaces != "" || !option.Config.EnableRemoteNodeIdentity ||
 			(option.Config.TunnelingEnabled() && !hasFullHostReachableServices())) {
 
@@ -929,15 +929,15 @@ func NewDaemon(ctx context.Context, cancel context.CancelFunc, epMgr *endpointma
 					"if the same endpoint is selected both by an egress gateway and a L7 policy, endpoint traffic will not go through egress gateway.", option.EnableL7Proxy)
 		}
 	}
-	if option.Config.EnableIPv4Masquerade && option.Config.EnableBPFMasquerade {
+	if option.Config.MasqueradingEnabled() && option.Config.EnableBPFMasquerade {
 		// TODO(brb) nodeport + ipvlan constraints will be lifted once the SNAT BPF code has been refactored
 		if option.Config.DatapathMode == datapathOption.DatapathModeIpvlan {
 			log.WithError(err).Errorf("BPF masquerade works only in veth mode (--%s=\"%s\"", option.DatapathMode, datapathOption.DatapathModeVeth)
 			return nil, nil, fmt.Errorf("BPF masquerade works only in veth mode (--%s=\"%s\"", option.DatapathMode, datapathOption.DatapathModeVeth)
 		}
 		if err := node.InitBPFMasqueradeAddrs(option.Config.GetDevices()); err != nil {
-			log.WithError(err).Error("failed to determine BPF masquerade IPv4 addrs")
-			return nil, nil, fmt.Errorf("failed to determine BPF masquerade IPv4 addrs: %w", err)
+			log.WithError(err).Error("failed to determine BPF masquerade addrs")
+			return nil, nil, fmt.Errorf("failed to determine BPF masquerade addrs: %w", err)
 		}
 	} else if option.Config.EnableIPMasqAgent {
 		log.WithError(err).Errorf("BPF ip-masq-agent requires --%s=\"true\" and --%s=\"true\"", option.EnableIPv4Masquerade, option.EnableBPFMasquerade)
@@ -945,9 +945,9 @@ func NewDaemon(ctx context.Context, cancel context.CancelFunc, epMgr *endpointma
 	} else if option.Config.EnableIPv4EgressGateway {
 		log.WithError(err).Errorf("egress gateway requires --%s=\"true\" and --%s=\"true\"", option.EnableIPv4Masquerade, option.EnableBPFMasquerade)
 		return nil, nil, fmt.Errorf("egress gateway requires --%s=\"true\" and --%s=\"true\"", option.EnableIPv4Masquerade, option.EnableBPFMasquerade)
-	} else if !option.Config.EnableIPv4Masquerade && option.Config.EnableBPFMasquerade {
+	} else if !option.Config.MasqueradingEnabled() && option.Config.EnableBPFMasquerade {
 		// There is not yet support for option.Config.EnableIPv6Masquerade
-		log.Infof("Auto-disabling %q feature since IPv4 masquerading was generally disabled",
+		log.Infof("Auto-disabling %q feature since IPv4 and IPv6 masquerading are disabled",
 			option.EnableBPFMasquerade)
 		option.Config.EnableBPFMasquerade = false
 	}
