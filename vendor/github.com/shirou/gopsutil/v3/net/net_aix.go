@@ -6,7 +6,6 @@ package net
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -86,11 +85,7 @@ func IOCounters(pernic bool) ([]IOCountersStat, error) {
 }
 
 func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, error) {
-	netstat, err := exec.LookPath("netstat")
-	if err != nil {
-		return nil, err
-	}
-	out, err := invoke.CommandWithContext(ctx, netstat, "-idn")
+	out, err := invoke.CommandWithContext(ctx, "netstat", "-idn")
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +100,7 @@ func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, 
 	return iocounters, nil
 }
 
-// NetIOCountersByFile is an method which is added just a compatibility for linux.
+// IOCountersByFile exists just for compatibility with Linux.
 func IOCountersByFile(pernic bool, filename string) ([]IOCountersStat, error) {
 	return IOCountersByFileWithContext(context.Background(), pernic, filename)
 }
@@ -360,11 +355,7 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 		args = append(args, "-funix")
 	}
 
-	netstat, err := exec.LookPath("netstat")
-	if err != nil {
-		return nil, err
-	}
-	out, err := invoke.CommandWithContext(ctx, netstat, args...)
+	out, err := invoke.CommandWithContext(ctx, "netstat", args...)
 	if err != nil {
 		return nil, err
 	}
