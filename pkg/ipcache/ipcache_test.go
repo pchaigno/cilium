@@ -7,14 +7,18 @@
 package ipcache
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"sort"
 	"testing"
 
+	"github.com/cilium/cilium/api/v1/models"
 	"github.com/cilium/cilium/pkg/checker"
+	"github.com/cilium/cilium/pkg/datapath"
 	identityPkg "github.com/cilium/cilium/pkg/identity"
+	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 	"github.com/cilium/cilium/pkg/policy"
 	"github.com/cilium/cilium/pkg/source"
 	"github.com/cilium/cilium/pkg/u8proto"
@@ -31,7 +35,13 @@ func Test(t *testing.T) {
 	TestingT(t)
 }
 
+func setupIPCacheTest() {
+	NodeHandler = &mockNodeHandler{}
+}
+
 func (s *IPCacheTestSuite) TestIPCache(c *C) {
+	setupIPCacheTest()
+
 	endpointIP := "10.0.0.15"
 	identity := (identityPkg.NumericIdentity(68))
 
@@ -211,6 +221,8 @@ func (s *IPCacheTestSuite) TestIPCache(c *C) {
 }
 
 func (s *IPCacheTestSuite) TestKeyToIPNet(c *C) {
+	setupIPCacheTest()
+
 	// Valid IPv6.
 	validIPv6Key := "cilium/state/ip/v1/default/f00d::a00:0:0:c164"
 
@@ -278,6 +290,8 @@ func (s *IPCacheTestSuite) TestKeyToIPNet(c *C) {
 }
 
 func (s *IPCacheTestSuite) TestIPCacheNamedPorts(c *C) {
+	setupIPCacheTest()
+
 	endpointIP := "10.0.0.15"
 	identity := (identityPkg.NumericIdentity(68))
 
@@ -540,7 +554,7 @@ func newDummyListener(ipc *IPCache) *dummyListener {
 
 func (dl *dummyListener) OnIPIdentityCacheChange(modType CacheModification,
 	cidr net.IPNet, oldHostIP, newHostIP net.IP, oldID *Identity,
-	newID Identity, encryptKey uint8, k8sMeta *K8sMetadata) {
+	newID Identity, encryptKey uint8, _ uint16, k8sMeta *K8sMetadata) {
 
 	switch modType {
 	case Upsert:
@@ -568,6 +582,8 @@ func (dl *dummyListener) ExpectMapping(c *C, targetIP string, targetIdentity ide
 }
 
 func (s *IPCacheTestSuite) TestIPCacheShadowing(c *C) {
+	setupIPCacheTest()
+
 	endpointIP := "10.0.0.15"
 	cidrOverlap := "10.0.0.15/32"
 	epIdentity := (identityPkg.NumericIdentity(68))
@@ -609,4 +625,46 @@ func (s *IPCacheTestSuite) TestIPCacheShadowing(c *C) {
 	ipc.Delete(endpointIP, source.KVStore)
 	_, exists := ipc.LookupByPrefix(cidrOverlap)
 	c.Assert(exists, Equals, false)
+}
+
+type mockNodeHandler struct{}
+
+func (n *mockNodeHandler) NodeAdd(newNode nodeTypes.Node) error {
+	return nil
+}
+
+func (n *mockNodeHandler) NodeUpdate(oldNode, newNode nodeTypes.Node) error {
+	return nil
+}
+
+func (n *mockNodeHandler) NodeDelete(node nodeTypes.Node) error {
+	return nil
+}
+
+func (n *mockNodeHandler) NodeValidateImplementation(node nodeTypes.Node) error {
+	return nil
+}
+
+func (n *mockNodeHandler) NodeConfigurationChanged(config datapath.LocalNodeConfiguration) error {
+	return nil
+}
+
+func (n *mockNodeHandler) NodeNeighDiscoveryEnabled() bool {
+	return false
+}
+
+func (n *mockNodeHandler) NodeNeighborRefresh(ctx context.Context, node nodeTypes.Node) {
+	return
+}
+
+func (n *mockNodeHandler) NodeCleanNeighbors(migrateOnly bool) {
+	return
+}
+
+func (n *mockNodeHandler) AllocateNodeID(_ net.IP) uint16 {
+	return 0
+}
+
+func (n *mockNodeHandler) DumpNodeIDs() []*models.NodeID {
+	return nil
 }
